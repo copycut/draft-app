@@ -3,12 +3,14 @@
 
   const STORAGE_KEY = "mtg-draft-night";
   const VALID_PLAYER_COUNTS = [4, 8];
-  const PICK_SECONDS = [60, 50, 40, 35, 30, 25, 20, 20, 15, 10, 10, 5, 5, 5, 5]; // index = pick-1
+  const PICK_SECONDS = [
+    60, 50, 50, 40, 40, 40, 40, 35, 35, 30, 25, 20, 15, 10, 10,
+  ]; // index = pick-1
   const REVIEW_SECONDS = { 1: 30, 2: 45, 3: 60 };
   const PASS_DIRECTION = {
-    1: "Pass to your left",
-    2: "Pass to your right",
-    3: "Pass to your left",
+    1: "Pass to your left ←",
+    2: "Pass to your right →",
+    3: "Pass to your left ←",
   };
 
   let state = loadState();
@@ -180,6 +182,8 @@
     const log = document.getElementById("match-log");
     log.innerHTML = "";
 
+    const activeRound = state.currentRound - 1;
+
     state.matchLog.forEach((entry) => {
       const p1 = playerById(entry.player1Id);
       const p2 = playerById(entry.player2Id);
@@ -188,10 +192,7 @@
       li.innerHTML = `
         <span class="match-round">Round ${entry.round}</span>
         <span class="match-pairing">
-          ${matchPlayerButtonHtml(entry, p1)}
-          <span class="vs">vs</span>
-          ${matchPlayerButtonHtml(entry, p2)}
-          <button type="button" class="btn match-btn draw-btn ${entry.result === "draw" ? "active" : ""}" data-match="${entry.id}" data-result="draw">Draw</button>
+          ${entry.round === activeRound ? matchPairingButtonsHtml(entry, p1, p2) : matchPairingResultHtml(entry, p1, p2)}
         </span>
       `;
       log.appendChild(li);
@@ -202,10 +203,38 @@
     });
   }
 
+  function matchPairingButtonsHtml(entry, p1, p2) {
+    return `
+      ${matchPlayerButtonHtml(entry, p1)}
+      <span class="vs">vs</span>
+      ${matchPlayerButtonHtml(entry, p2)}
+      <button type="button" class="btn match-btn draw-btn ${entry.result === "draw" ? "active" : ""}" data-match="${entry.id}" data-result="draw">Draw</button>
+    `;
+  }
+
   function matchPlayerButtonHtml(entry, player) {
     if (!player) return "?";
     const isWinner = entry.result === player.id;
     return `<button type="button" class="btn match-btn win-btn ${isWinner ? "active" : ""}" data-match="${entry.id}" data-result="${player.id}">${escapeHtml(player.name)}</button>`;
+  }
+
+  function matchPairingResultHtml(entry, p1, p2) {
+    const p1Name = p1 ? escapeHtml(p1.name) : "?";
+    const p2Name = p2 ? escapeHtml(p2.name) : "?";
+    if (entry.result === "draw") {
+      return `<span class="match-result">${p1Name} vs ${p2Name} — Draw</span>`;
+    }
+    if (entry.result == null) {
+      return `<span class="match-result">${p1Name} vs ${p2Name} — Pending</span>`;
+    }
+    const winner =
+      entry.result === (p1 && p1.id)
+        ? p1
+        : entry.result === (p2 && p2.id)
+          ? p2
+          : null;
+    const winnerName = winner ? escapeHtml(winner.name) : "?";
+    return `<span class="match-result">${p1Name} vs ${p2Name} — <strong>${winnerName}</strong> won</span>`;
   }
 
   function deleteButtonHtml(player) {
@@ -342,8 +371,15 @@
   }
 
   function renderDraftTimerDigits() {
+    const expired = draftSecondsRemaining <= 0;
     document.getElementById("draft-timer-seconds").textContent =
       draftSecondsRemaining;
+    document
+      .getElementById("draft-timer-seconds")
+      .classList.toggle("expired", expired);
+    document
+      .getElementById("draft-screen")
+      .classList.toggle("expired", expired);
   }
 
   function renderDraftTimerButton() {
