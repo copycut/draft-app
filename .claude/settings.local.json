@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --yes prettier --write index.html style.css script.js plan.md)",
+      "Bash(python3 -m http.server 8934)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8934/index.html)",
+      "Bash(node drive-draft.js)",
+      "Bash(lsof -ti:8934 -sTCP:LISTEN)",
+      "Bash(xargs -r kill)",
+      "Bash(node drive-start-btn.js)",
+      "Bash(npx --yes prettier --write plan.md)"
+    ]
+  }
+}
