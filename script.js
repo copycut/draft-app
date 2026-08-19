@@ -1,0 +1,613 @@
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "mtg-draft-night";
+  const VALID_PLAYER_COUNTS = [4, 8];
+  const PICK_SECONDS = [60, 50, 40, 35, 30, 25, 20, 20, 15, 10, 10, 5, 5, 5, 5]; // index = pick-1
+  const REVIEW_SECONDS = { 1: 30, 2: 45, 3: 60 };
+  const PASS_DIRECTION = {
+    1: "Pass to your left",
+    2: "Pass to your right",
+    3: "Pass to your left",
+  };
+
+  let state = loadState();
+  let animatePodiumNextRender = false;
+  let draftIntervalId = null;
+  let draftSecondsRemaining = 0;
+  let draftPaused = false;
+  let draftPhaseStarted = false;
+  let draftPhaseChanged = true;
+
+  function emptyState() {
+    return {
+      players: [],
+      matchLog: [],
+      currentRound: 1,
+      ended: false,
+      screen: "draft",
+      draft: { pack: 1, pick: 1, phase: "pick" },
+    };
+  }
+
+  function normalizeDraft(draft) {
+    const pack = [1, 2, 3].includes(draft && draft.pack) ? draft.pack : 1;
+    const pick =
+      draft &&
+      Number.isInteger(draft.pick) &&
+      draft.pick >= 1 &&
+      draft.pick <= 15
+        ? draft.pick
+        : 1;
+    const phase =
+      draft && (draft.phase === "pick" || draft.phase === "review")
+        ? draft.phase
+        : "pick";
+    return { pack, pick, phase };
+  }
+
+  function loadState() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return emptyState();
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return {
+        players: parsed.players || [],
+        matchLog: parsed.matchLog || [],
+        currentRound: parsed.currentRound || 1,
+        ended: parsed.ended || false,
+        screen: parsed.screen === "tournament" ? "tournament" : "draft",
+        draft: normalizeDraft(parsed.draft),
+      };
+    } catch (e) {
+      return emptyState();
+    }
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function playerById(id) {
+    return state.players.find((p) => p.id === id);
+  }
+
+  function matchById(id) {
+    return state.matchLog.find((m) => m.id === id);
+  }
+
+  function draftStarted() {
+    return state.matchLog.length > 0;
+  }
+
+  function statsFor(playerId) {
+    let wins = 0;
+    let draws = 0;
+    let losses = 0;
+
+    state.matchLog.forEach((entry) => {
+      if (entry.result == null) return;
+      const isP1 = entry.player1Id === playerId;
+      const isP2 = entry.player2Id === playerId;
+      if (!isP1 && !isP2) return;
+
+      if (entry.result === "draw") {
+        draws += 1;
+      } else if (entry.result === playerId) {
+        wins += 1;
+      } else {
+        losses += 1;
+      }
+    });
+
+    return { wins, draws, losses, points: wins * 3 + draws };
+  }
+
+  function hasAnyResult() {
+    return state.matchLog.some((entry) => entry.result != null);
+  }
+
+  function compareByStanding(a, b) {
+    const pointsDiff = statsFor(b.id).points - statsFor(a.id).points;
+    if (pointsDiff !== 0) return pointsDiff;
+
+    const headToHead = state.matchLog.find(
+      (m) =>
+        (m.player1Id === a.id && m.player2Id === b.id) ||
+        (m.player1Id === b.id && m.player2Id === a.id),
+    );
+    if (headToHead && headToHead.result === a.id) return -1;
+    if (headToHead && headToHead.result === b.id) return 1;
+
+    return 0;
+  }
+
+  function latestRoundComplete() {
+    const latestRound = state.currentRound - 1;
+    if (latestRound < 1) return true;
+    return state.matchLog
+      .filter((entry) => entry.round === latestRound)
+      .every((entry) => entry.result != null);
+  }
+
+  // ---- Rendering ----
+
+  function renderAll() {
+    renderDraftScreen();
+    renderPodium();
+    renderMatchLog();
+    renderPlayersTable();
+    renderPairingControls();
+    renderAddPlayerForm();
+  }
+
+  function renderPodium() {
+    const section = document.getElementById("standings-section");
+    const podium = document.getElementById("podium");
+    const shouldAnimate = animatePodiumNextRender;
+    animatePodiumNextRender = false;
+    podium.innerHTML = "";
+
+    const hasStandings = state.players.length > 0 && hasAnyResult();
+    section.classList.toggle("hidden", !hasStandings);
+    if (!hasStandings) return;
+
+    const top3 = [...state.players].sort(compareByStanding).slice(0, 3);
+
+    const medals = ["🥇", "🥈", "🥉"];
+
+    top3.forEach((player, index) => {
+      const card = document.createElement("div");
+      card.className = `podium-card rank-${index + 1}${shouldAnimate ? " podium-animate" : ""}`;
+      card.innerHTML = `
+        <div class="medal">${medals[index]}</div>
+        <div class="name">${escapeHtml(player.name)}</div>
+        <div class="deck">${escapeHtml(player.deck)}</div>
+        <div class="points">${statsFor(player.id).points} pts</div>
+      `;
+      podium.appendChild(card);
+    });
+  }
+
+  function renderMatchLog() {
+    const section = document.getElementById("match-log-section");
+    const hasLog = state.matchLog.length > 0 && !state.ended;
+    section.classList.toggle("hidden", !hasLog);
+    if (!hasLog) return;
+
+    const log = document.getElementById("match-log");
+    log.innerHTML = "";
+
+    state.matchLog.forEach((entry) => {
+      const p1 = playerById(entry.player1Id);
+      const p2 = playerById(entry.player2Id);
+      const li = document.createElement("li");
+      li.className = "match-entry";
+      li.innerHTML = `
+        <span class="match-round">Round ${entry.round}</span>
+        <span class="match-pairing">
+          ${matchPlayerButtonHtml(entry, p1)}
+          <span class="vs">vs</span>
+          ${matchPlayerButtonHtml(entry, p2)}
+          <button type="button" class="btn match-btn draw-btn ${entry.result === "draw" ? "active" : ""}" data-match="${entry.id}" data-result="draw">Draw</button>
+        </span>
+      `;
+      log.appendChild(li);
+    });
+
+    log.querySelectorAll("button[data-match]").forEach((btn) => {
+      btn.addEventListener("click", onMatchResultClick);
+    });
+  }
+
+  function matchPlayerButtonHtml(entry, player) {
+    if (!player) return "?";
+    const isWinner = entry.result === player.id;
+    return `<button type="button" class="btn match-btn win-btn ${isWinner ? "active" : ""}" data-match="${entry.id}" data-result="${player.id}">${escapeHtml(player.name)}</button>`;
+  }
+
+  function deleteButtonHtml(player) {
+    return `<button type="button" class="btn btn-danger btn-delete" data-action="delete" data-player="${player.id}" aria-label="Remove ${escapeHtml(player.name)}">Delete</button>`;
+  }
+
+  function renderPlayersTable() {
+    const tbody = document.getElementById("players-tbody");
+    tbody.innerHTML = "";
+
+    const started = draftStarted();
+    const sortedPlayers = [...state.players].sort(compareByStanding);
+
+    sortedPlayers.forEach((player, index) => {
+      const stats = statsFor(player.id);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>#${index + 1}</td>
+        <td>${escapeHtml(player.name)}</td>
+        <td>${escapeHtml(player.deck)}</td>
+        <td>${stats.wins}</td>
+        <td>${stats.draws}</td>
+        <td>${stats.losses}</td>
+        <td>${stats.points}</td>
+        <td>${started ? "" : deleteButtonHtml(player)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll('button[data-action="delete"]').forEach((btn) => {
+      btn.addEventListener("click", onDeletePlayerClick);
+    });
+  }
+
+  function renderPairingControls() {
+    const section = document.getElementById("pairing-controls-section");
+    section.classList.toggle("hidden", state.ended);
+    if (state.ended) return;
+
+    const btn = document.getElementById("generate-round-btn");
+    const endBtn = document.getElementById("end-tournament-btn");
+    const hint = document.getElementById("pairing-hint");
+    const count = state.players.length;
+    const validCount = VALID_PLAYER_COUNTS.includes(count);
+    const roundComplete = latestRoundComplete();
+
+    endBtn.disabled = !draftStarted();
+
+    if (!validCount) {
+      btn.disabled = true;
+      hint.textContent = `Add exactly 4 or 8 players to start (currently ${count}).`;
+    } else if (!roundComplete) {
+      btn.disabled = true;
+      hint.textContent = `Enter results for round ${state.currentRound - 1} before generating the next round.`;
+    } else {
+      btn.disabled = false;
+      hint.textContent = `Ready — generate round ${state.currentRound}.`;
+    }
+  }
+
+  function renderAddPlayerForm() {
+    const form = document.getElementById("add-player-form");
+    form.classList.toggle("hidden", draftStarted());
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function renderDraftScreen() {
+    const draftEl = document.getElementById("draft-screen");
+    const tournamentEl = document.getElementById("tournament-screen");
+    const onDraft = state.screen !== "tournament";
+    draftEl.classList.toggle("hidden", !onDraft);
+    tournamentEl.classList.toggle("hidden", onDraft);
+
+    if (!onDraft) {
+      stopDraftTimer();
+      return;
+    }
+
+    const { pack, pick, phase } = state.draft;
+    document.getElementById("draft-pack-pick").textContent =
+      phase === "pick"
+        ? `Pack ${pack} · Pick ${pick} / 15`
+        : `Pack ${pack} · Review`;
+    document.getElementById("draft-phase-label").textContent =
+      phase === "pick" ? PASS_DIRECTION[pack] : "Review your pack";
+    document
+      .getElementById("draft-timer-seconds")
+      .classList.toggle("review", phase === "review");
+
+    const advanceBtn = document.getElementById("draft-advance-btn");
+    if (phase === "pick" && pick < 15) {
+      advanceBtn.textContent = "Next Pick";
+    } else if (phase === "pick") {
+      advanceBtn.textContent = "Start Review";
+    } else if (pack < 3) {
+      advanceBtn.textContent = `Start Pack ${pack + 1}`;
+    } else {
+      advanceBtn.textContent = "Start Tournament";
+    }
+
+    if (draftPhaseChanged) {
+      draftPhaseChanged = false;
+      resetDraftPhaseTimer();
+    }
+
+    renderDraftTimerButton();
+  }
+
+  // ---- Draft phase timer ----
+
+  function currentPhaseDuration() {
+    const { pack, pick, phase } = state.draft;
+    return phase === "pick" ? PICK_SECONDS[pick - 1] : REVIEW_SECONDS[pack];
+  }
+
+  function stopDraftTimer() {
+    if (draftIntervalId !== null) {
+      clearInterval(draftIntervalId);
+      draftIntervalId = null;
+    }
+  }
+
+  function resetDraftPhaseTimer() {
+    stopDraftTimer();
+    draftSecondsRemaining = currentPhaseDuration();
+    draftPaused = false;
+    draftPhaseStarted = false;
+    renderDraftTimerDigits();
+  }
+
+  function renderDraftTimerDigits() {
+    document.getElementById("draft-timer-seconds").textContent =
+      draftSecondsRemaining;
+  }
+
+  function renderDraftTimerButton() {
+    const btn = document.getElementById("draft-timer-btn");
+    btn.textContent = !draftPhaseStarted
+      ? "Start"
+      : draftIntervalId !== null
+        ? "Pause"
+        : "Resume";
+    btn.disabled = draftSecondsRemaining <= 0;
+  }
+
+  function tickDraftTimer() {
+    draftSecondsRemaining -= 1;
+    if (draftSecondsRemaining <= 0) {
+      draftSecondsRemaining = 0;
+      renderDraftTimerDigits();
+      stopDraftTimer();
+      renderDraftTimerButton();
+      return;
+    }
+    renderDraftTimerDigits();
+  }
+
+  function onDraftTimerBtnClick() {
+    if (!draftPhaseStarted) {
+      draftPhaseStarted = true;
+      draftPaused = false;
+      draftIntervalId = setInterval(tickDraftTimer, 1000);
+    } else if (draftIntervalId !== null) {
+      stopDraftTimer();
+      draftPaused = true;
+    } else if (draftSecondsRemaining > 0) {
+      draftPaused = false;
+      draftIntervalId = setInterval(tickDraftTimer, 1000);
+    }
+    renderDraftTimerButton();
+  }
+
+  function onDraftAdvanceClick() {
+    const d = state.draft;
+    if (d.phase === "pick" && d.pick < 15) {
+      d.pick += 1;
+    } else if (d.phase === "pick") {
+      d.phase = "review";
+    } else if (d.pack < 3) {
+      d.pack += 1;
+      d.pick = 1;
+      d.phase = "pick";
+    } else {
+      state.screen = "tournament";
+    }
+    draftPhaseChanged = true;
+    saveState();
+    renderAll();
+  }
+
+  function onSkipDraftClick() {
+    showConfirmModal(
+      "Skip the pick timer and jump straight to the tournament screen?",
+      () => {
+        state.screen = "tournament";
+        saveState();
+        renderAll();
+      },
+    );
+  }
+
+  // ---- Event handlers ----
+
+  function onMatchResultClick(e) {
+    const btn = e.currentTarget;
+    const matchId = btn.dataset.match;
+    const result = btn.dataset.result;
+    const entry = matchById(matchId);
+    if (!entry) return;
+
+    entry.result = entry.result === result ? null : result;
+
+    saveState();
+    renderAll();
+  }
+
+  function onDeletePlayerClick(e) {
+    if (draftStarted()) return;
+
+    const playerId = e.currentTarget.dataset.player;
+    const player = playerById(playerId);
+    if (!player) return;
+
+    showConfirmModal(`Remove ${player.name} (${player.deck})?`, () => {
+      state.players = state.players.filter((p) => p.id !== playerId);
+      saveState();
+      renderAll();
+    });
+  }
+
+  function onAddPlayerSubmit(e) {
+    e.preventDefault();
+    if (draftStarted()) return;
+
+    const nameInput = document.getElementById("player-name-input");
+    const deckInput = document.getElementById("deck-name-input");
+    const name = nameInput.value.trim();
+    const deck = deckInput.value.trim();
+    if (!name || !deck) return;
+
+    state.players.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      deck,
+    });
+
+    nameInput.value = "";
+    deckInput.value = "";
+
+    saveState();
+    renderAll();
+  }
+
+  function onGenerateRoundClick() {
+    if (state.ended) return;
+    const count = state.players.length;
+    if (!VALID_PLAYER_COUNTS.includes(count)) return;
+    if (!latestRoundComplete()) return;
+
+    const pairs =
+      state.currentRound === 1
+        ? generateRandomPairs(state.players)
+        : generateStandingsPairs(state.players, state.matchLog);
+
+    const round = state.currentRound;
+    pairs.forEach(([p1, p2]) => {
+      state.matchLog.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        round,
+        player1Id: p1.id,
+        player2Id: p2.id,
+        result: null,
+      });
+    });
+    state.currentRound += 1;
+
+    saveState();
+    animatePodiumNextRender = true;
+    renderAll();
+  }
+
+  function onEndTournamentClick() {
+    if (!draftStarted() || state.ended) return;
+
+    showConfirmModal(
+      "End the tournament now? Standings will be final and no more rounds can be generated.",
+      () => {
+        state.ended = true;
+        saveState();
+        animatePodiumNextRender = true;
+        renderAll();
+      },
+    );
+  }
+
+  function generateRandomPairs(players) {
+    const shuffled = [...players];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return chunkIntoPairs(shuffled);
+  }
+
+  function generateStandingsPairs(players, matchLog) {
+    const played = new Set(
+      matchLog.map((m) => pairKey(m.player1Id, m.player2Id)),
+    );
+    const sorted = [...players].sort(compareByStanding);
+    const unpaired = [...sorted];
+    const pairs = [];
+
+    while (unpaired.length > 0) {
+      const p1 = unpaired.shift();
+      let idx = unpaired.findIndex((p2) => !played.has(pairKey(p1.id, p2.id)));
+      if (idx === -1) idx = 0;
+      const p2 = unpaired.splice(idx, 1)[0];
+      pairs.push([p1, p2]);
+    }
+
+    return pairs;
+  }
+
+  function pairKey(id1, id2) {
+    return [id1, id2].sort().join("::");
+  }
+
+  function chunkIntoPairs(list) {
+    const pairs = [];
+    for (let i = 0; i < list.length; i += 2) {
+      pairs.push([list[i], list[i + 1]]);
+    }
+    return pairs;
+  }
+
+  // ---- Clear data / confirmation modal ----
+
+  function showConfirmModal(text, onConfirm) {
+    const modal = document.getElementById("confirm-modal");
+    document.getElementById("confirm-modal-text").textContent = text;
+    modal.classList.remove("hidden");
+
+    const confirmBtn = document.getElementById("confirm-modal-confirm");
+    const cancelBtn = document.getElementById("confirm-modal-cancel");
+
+    function cleanup() {
+      modal.classList.add("hidden");
+      confirmBtn.removeEventListener("click", onConfirmClick);
+      cancelBtn.removeEventListener("click", onCancelClick);
+    }
+    function onConfirmClick() {
+      cleanup();
+      onConfirm();
+    }
+    function onCancelClick() {
+      cleanup();
+    }
+
+    confirmBtn.addEventListener("click", onConfirmClick);
+    cancelBtn.addEventListener("click", onCancelClick);
+  }
+
+  function onClearDataClick() {
+    showConfirmModal(
+      "Clear all draft night data? This cannot be undone.",
+      () => {
+        localStorage.removeItem(STORAGE_KEY);
+        state = emptyState();
+        draftPhaseChanged = true;
+        renderAll();
+      },
+    );
+  }
+
+  // ---- Init ----
+
+  document
+    .getElementById("add-player-form")
+    .addEventListener("submit", onAddPlayerSubmit);
+  document
+    .getElementById("generate-round-btn")
+    .addEventListener("click", onGenerateRoundClick);
+  document
+    .getElementById("end-tournament-btn")
+    .addEventListener("click", onEndTournamentClick);
+  document
+    .getElementById("clear-data-btn")
+    .addEventListener("click", onClearDataClick);
+  document
+    .getElementById("draft-advance-btn")
+    .addEventListener("click", onDraftAdvanceClick);
+  document
+    .getElementById("draft-timer-btn")
+    .addEventListener("click", onDraftTimerBtnClick);
+  document
+    .getElementById("draft-skip-btn")
+    .addEventListener("click", onSkipDraftClick);
+
+  renderAll();
+})();
