@@ -216,7 +216,8 @@ section {
 
 /* Draft phase */
 
-#draft-screen {
+#draft-screen,
+#player-count-screen {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -225,6 +226,9 @@ section {
   flex: 1;
   text-align: center;
   margin-bottom: 0;
+}
+
+#draft-screen {
   border: 3px solid var(--color-border);
   border-radius: 12px;
   transition: border-color 0.2s ease;
@@ -232,6 +236,24 @@ section {
 
 #draft-screen.expired {
   border-color: var(--color-danger);
+}
+
+.player-count-title {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.player-count-options {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.player-count-btn {
+  font-size: 2rem;
+  padding: 2rem 3rem;
 }
 
 .draft-progress {

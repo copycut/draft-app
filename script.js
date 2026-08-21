@@ -2,10 +2,9 @@
   "use strict";
 
   const STORAGE_KEY = "mtg-draft-night";
-  const VALID_PLAYER_COUNTS = [4, 8];
   const PICK_SECONDS = [
     60, 50, 50, 40, 40, 40, 40, 35, 35, 30, 25, 20, 15, 10, 10,
-  ]; // index = pick-1
+  ]; // index = (15 - cardsRemainingBeforePick)
   const REVIEW_SECONDS = { 1: 30, 2: 45, 3: 60 };
   const PASS_DIRECTION = {
     1: "Pass to your left ←",
@@ -27,7 +26,8 @@
       matchLog: [],
       currentRound: 1,
       ended: false,
-      screen: "draft",
+      screen: "select",
+      draftMode: 8,
       draft: { pack: 1, pick: 1, phase: "pick" },
     };
   }
@@ -60,12 +60,23 @@
         matchLog: parsed.matchLog || [],
         currentRound: parsed.currentRound || 1,
         ended: parsed.ended || false,
-        screen: parsed.screen === "tournament" ? "tournament" : "draft",
+        screen: ["select", "draft", "tournament"].includes(parsed.screen)
+          ? parsed.screen
+          : "select",
+        draftMode: parsed.draftMode === 4 ? 4 : 8,
         draft: normalizeDraft(parsed.draft),
       };
     } catch (e) {
       return emptyState();
     }
+  }
+
+  function picksPerPack(mode) {
+    return mode === 4 ? 7 : 14;
+  }
+
+  function cardsPerPick(mode) {
+    return mode === 4 ? 2 : 1;
   }
 
   function saveState() {
@@ -137,6 +148,7 @@
   // ---- Rendering ----
 
   function renderAll() {
+    renderScreens();
     renderDraftScreen();
     renderPodium();
     renderMatchLog();
@@ -278,14 +290,14 @@
     const endBtn = document.getElementById("end-tournament-btn");
     const hint = document.getElementById("pairing-hint");
     const count = state.players.length;
-    const validCount = VALID_PLAYER_COUNTS.includes(count);
+    const validCount = count === state.draftMode;
     const roundComplete = latestRoundComplete();
 
     endBtn.disabled = !draftStarted();
 
     if (!validCount) {
       btn.disabled = true;
-      hint.textContent = `Add exactly 4 or 8 players to start (currently ${count}).`;
+      hint.textContent = `Add exactly ${state.draftMode} players to start (currently ${count}).`;
     } else if (!roundComplete) {
       btn.disabled = true;
       hint.textContent = `Enter results for round ${state.currentRound - 1} before generating the next round.`;
@@ -306,22 +318,30 @@
     return div.innerHTML;
   }
 
-  function renderDraftScreen() {
-    const draftEl = document.getElementById("draft-screen");
-    const tournamentEl = document.getElementById("tournament-screen");
-    const onDraft = state.screen !== "tournament";
-    draftEl.classList.toggle("hidden", !onDraft);
-    tournamentEl.classList.toggle("hidden", onDraft);
+  function renderScreens() {
+    document
+      .getElementById("player-count-screen")
+      .classList.toggle("hidden", state.screen !== "select");
+    document
+      .getElementById("draft-screen")
+      .classList.toggle("hidden", state.screen !== "draft");
+    document
+      .getElementById("tournament-screen")
+      .classList.toggle("hidden", state.screen !== "tournament");
 
-    if (!onDraft) {
+    if (state.screen !== "draft") {
       stopDraftTimer();
-      return;
     }
+  }
+
+  function renderDraftScreen() {
+    if (state.screen !== "draft") return;
 
     const { pack, pick, phase } = state.draft;
+    const totalPicks = picksPerPack(state.draftMode);
     document.getElementById("draft-pack-pick").textContent =
       phase === "pick"
-        ? `Pack ${pack} · Pick ${pick} / 15`
+        ? `Pack ${pack} · Pick ${pick} / ${totalPicks}`
         : `Pack ${pack} · Review`;
     document.getElementById("draft-phase-label").textContent =
       phase === "pick" ? PASS_DIRECTION[pack] : "Review your pack";
@@ -330,7 +350,7 @@
       .classList.toggle("review", phase === "review");
 
     const advanceBtn = document.getElementById("draft-advance-btn");
-    if (phase === "pick" && pick < 15) {
+    if (phase === "pick" && pick < totalPicks) {
       advanceBtn.textContent = "Next Pick";
     } else if (phase === "pick") {
       advanceBtn.textContent = "Start Review";
@@ -352,7 +372,10 @@
 
   function currentPhaseDuration() {
     const { pack, pick, phase } = state.draft;
-    return phase === "pick" ? PICK_SECONDS[pick - 1] : REVIEW_SECONDS[pack];
+    if (phase === "review") return REVIEW_SECONDS[pack];
+
+    const cardsRemaining = 15 - cardsPerPick(state.draftMode) * (pick - 1);
+    return PICK_SECONDS[15 - cardsRemaining];
   }
 
   function stopDraftTimer() {
@@ -421,7 +444,7 @@
 
   function onDraftAdvanceClick() {
     const d = state.draft;
-    if (d.phase === "pick" && d.pick < 15) {
+    if (d.phase === "pick" && d.pick < picksPerPack(state.draftMode)) {
       d.pick += 1;
     } else if (d.phase === "pick") {
       d.phase = "review";
@@ -446,6 +469,15 @@
         renderAll();
       },
     );
+  }
+
+  function onSelectPlayerCountClick(mode) {
+    state.draftMode = mode;
+    state.screen = "draft";
+    state.draft = { pack: 1, pick: 1, phase: "pick" };
+    draftPhaseChanged = true;
+    saveState();
+    renderAll();
   }
 
   // ---- Event handlers ----
@@ -503,7 +535,7 @@
   function onGenerateRoundClick() {
     if (state.ended) return;
     const count = state.players.length;
-    if (!VALID_PLAYER_COUNTS.includes(count)) return;
+    if (count !== state.draftMode) return;
     if (!latestRoundComplete()) return;
 
     const pairs =
@@ -644,6 +676,12 @@
   document
     .getElementById("draft-skip-btn")
     .addEventListener("click", onSkipDraftClick);
+  document
+    .getElementById("player-count-4-btn")
+    .addEventListener("click", () => onSelectPlayerCountClick(4));
+  document
+    .getElementById("player-count-8-btn")
+    .addEventListener("click", () => onSelectPlayerCountClick(8));
 
   renderAll();
 })();

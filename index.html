@@ -4,12 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MTG Draft Night</title>
-    <link rel="stylesheet" href="style.css?v=1.0" />
+    <link rel="stylesheet" href="style.css?v=1.1" />
   </head>
   <body>
+    <section id="player-count-screen">
+      <p class="player-count-title">How many players?</p>
+      <div class="player-count-options">
+        <button
+          id="player-count-4-btn"
+          class="btn btn-accent player-count-btn"
+          type="button"
+        >
+          4 Players
+        </button>
+        <button
+          id="player-count-8-btn"
+          class="btn btn-accent player-count-btn"
+          type="button"
+        >
+          8 Players
+        </button>
+      </div>
+    </section>
+
     <section id="draft-screen" class="draft-screen">
       <div class="draft-progress">
-        <p id="draft-pack-pick" class="draft-pack-pick">Pack 1 · Pick 1 / 15</p>
+        <p id="draft-pack-pick" class="draft-pack-pick">Pack 1 · Pick 1 / 14</p>
         <p id="draft-phase-label" class="draft-phase-label">
           Pass to your left ←
         </p>
@@ -117,6 +137,6 @@
       </div>
     </div>
 
-    <script src="script.js?v=1.0"></script>
+    <script src="script.js?v=1.1"></script>
   </body>
 </html>
