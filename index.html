@@ -59,7 +59,7 @@
 
     <div id="tournament-screen">
       <section class="standings" id="standings-section">
-        <h2>Top 3</h2>
+        <h2>Top 3 <span id="tournament-date" class="tournament-date"></span></h2>
         <div class="podium" id="podium"></div>
       </section>
 
@@ -67,10 +67,26 @@
         <button id="generate-round-btn" class="btn btn-accent" disabled>
           Next round pairings
         </button>
+        <div class="round-timer">
+          <span id="round-timer-seconds" class="round-timer-seconds"
+            >50:00</span
+          >
+          <button
+            id="round-timer-btn"
+            class="btn round-timer-btn"
+            type="button"
+          >
+            Start
+          </button>
+        </div>
         <p id="pairing-hint" class="hint">
           Add exactly 4 or 8 players to start.
         </p>
-        <button id="end-tournament-btn" class="btn btn-danger" disabled>
+        <button
+          id="end-tournament-btn"
+          class="btn btn-outline btn-danger"
+          disabled
+        >
           End tournament
         </button>
       </section>

@@ -8,7 +8,7 @@
   --color-text-dim: #9aa0b4;
   --color-accent: #a3f24e;
   --color-accent-text: #1c1305;
-  --color-danger: #832231;
+  --color-danger: #b52238;
   --color-danger-text: #2a0a10;
   --color-gold: #f2c14e;
   --color-silver: #c9ccd6;
@@ -214,6 +214,17 @@ section {
   border-color: var(--color-danger);
 }
 
+.btn-outline {
+  background: none;
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn-outline.btn-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
 /* Draft phase */
 
 #draft-screen,
@@ -318,6 +329,14 @@ section {
 }
 
 /* Standings / podium */
+
+.tournament-date {
+  text-transform: none;
+  font-size: 0.8rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  color: var(--color-text-dim);
+}
 
 .podium {
   display: flex;
@@ -449,6 +468,32 @@ section {
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+  border: 3px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1rem;
+  transition: border-color 0.2s ease;
+}
+
+.pairing-controls.expired {
+  border-color: var(--color-danger);
+}
+
+.round-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.round-timer-seconds {
+  font-size: 1.8rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
+}
+
+.round-timer-seconds.expired {
+  color: var(--color-danger);
 }
 
 .hint {
@@ -631,4 +676,10 @@ table td:first-child {
 
 .link-btn:hover {
   color: var(--color-text);
+}
+
+@media print {
+  #clear-data-btn {
+    display: none;
+  }
 }

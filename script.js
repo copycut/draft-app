@@ -6,6 +6,7 @@
     60, 50, 50, 40, 40, 40, 40, 35, 35, 30, 25, 20, 15, 10, 10,
   ]; // index = (15 - cardsRemainingBeforePick)
   const REVIEW_SECONDS = { 1: 30, 2: 45, 3: 60 };
+  const ROUND_SECONDS = 50 * 60;
   const PASS_DIRECTION = {
     1: "Pass to your left ←",
     2: "Pass to your right →",
@@ -19,6 +20,28 @@
   let draftPaused = false;
   let draftPhaseStarted = false;
   let draftPhaseChanged = true;
+  let roundIntervalId = null;
+  let roundSecondsRemaining = ROUND_SECONDS;
+  let roundStarted = false;
+  let audioCtx = null;
+
+  function playBellSound() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!audioCtx) audioCtx = new Ctx();
+
+    const now = audioCtx.currentTime;
+    const oscillator = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.3, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+    oscillator.connect(gain).connect(audioCtx.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 1.2);
+  }
 
   function emptyState() {
     return {
@@ -29,11 +52,18 @@
       screen: "select",
       draftMode: 8,
       draft: { pack: 1, pick: 1, phase: "pick" },
+      tournamentDate: null,
     };
   }
 
+  function formatDateEU(date) {
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    return `${day}/${month}/${date.getFullYear()}`;
+  }
+
   function normalizeDraft(draft) {
-    const pack = [1, 2, 3].includes(draft && draft.pack) ? draft.pack : 1;
+    const pack = [1, 2, 3].includes(draft?.pack) ? draft.pack : 1;
     const pick =
       draft &&
       Number.isInteger(draft.pick) &&
@@ -65,6 +95,10 @@
           : "select",
         draftMode: parsed.draftMode === 4 ? 4 : 8,
         draft: normalizeDraft(parsed.draft),
+        tournamentDate:
+          typeof parsed.tournamentDate === "string"
+            ? parsed.tournamentDate
+            : null,
       };
     } catch (e) {
       return emptyState();
@@ -163,6 +197,8 @@
     const shouldAnimate = animatePodiumNextRender;
     animatePodiumNextRender = false;
     podium.innerHTML = "";
+    document.getElementById("tournament-date").textContent =
+      state.tournamentDate || "";
 
     const hasStandings = state.players.length > 0 && hasAnyResult();
     section.classList.toggle("hidden", !hasStandings);
@@ -239,12 +275,7 @@
     if (entry.result == null) {
       return `<span class="match-result">${p1Name} vs ${p2Name} — Pending</span>`;
     }
-    const winner =
-      entry.result === (p1 && p1.id)
-        ? p1
-        : entry.result === (p2 && p2.id)
-          ? p2
-          : null;
+    const winner = [p1, p2].find((p) => p && p.id === entry.result) || null;
     const winnerName = winner ? escapeHtml(winner.name) : "?";
     return `<span class="match-result">${p1Name} vs ${p2Name} — <strong>${winnerName}</strong> won</span>`;
   }
@@ -305,6 +336,77 @@
       btn.disabled = false;
       hint.textContent = `Ready — generate round ${state.currentRound}.`;
     }
+
+    renderRoundTimerDigits();
+    renderRoundTimerButton();
+  }
+
+  // ---- Round timer ----
+
+  function stopRoundTimer() {
+    if (roundIntervalId !== null) {
+      clearInterval(roundIntervalId);
+      roundIntervalId = null;
+    }
+  }
+
+  function resetRoundTimer() {
+    stopRoundTimer();
+    roundSecondsRemaining = ROUND_SECONDS;
+    roundStarted = false;
+    renderRoundTimerDigits();
+    renderRoundTimerButton();
+  }
+
+  function renderRoundTimerDigits() {
+    const expired = roundSecondsRemaining <= 0;
+    const minutes = Math.floor(roundSecondsRemaining / 60);
+    const seconds = roundSecondsRemaining % 60;
+    document.getElementById("round-timer-seconds").textContent =
+      `${minutes}:${String(seconds).padStart(2, "0")}`;
+    document
+      .getElementById("round-timer-seconds")
+      .classList.toggle("expired", expired);
+    document
+      .getElementById("pairing-controls-section")
+      .classList.toggle("expired", expired);
+  }
+
+  function renderRoundTimerButton() {
+    const btn = document.getElementById("round-timer-btn");
+    if (!roundStarted) {
+      btn.textContent = "Start";
+    } else if (roundIntervalId !== null) {
+      btn.textContent = "Pause";
+    } else {
+      btn.textContent = "Resume";
+    }
+    btn.disabled = roundSecondsRemaining <= 0;
+  }
+
+  function tickRoundTimer() {
+    roundSecondsRemaining -= 1;
+    if (roundSecondsRemaining <= 0) {
+      roundSecondsRemaining = 0;
+      renderRoundTimerDigits();
+      stopRoundTimer();
+      renderRoundTimerButton();
+      playBellSound();
+      return;
+    }
+    renderRoundTimerDigits();
+  }
+
+  function onRoundTimerBtnClick() {
+    if (!roundStarted) {
+      roundStarted = true;
+      roundIntervalId = setInterval(tickRoundTimer, 1000);
+    } else if (roundIntervalId !== null) {
+      stopRoundTimer();
+    } else if (roundSecondsRemaining > 0) {
+      roundIntervalId = setInterval(tickRoundTimer, 1000);
+    }
+    renderRoundTimerButton();
   }
 
   function renderAddPlayerForm() {
@@ -407,11 +509,13 @@
 
   function renderDraftTimerButton() {
     const btn = document.getElementById("draft-timer-btn");
-    btn.textContent = !draftPhaseStarted
-      ? "Start"
-      : draftIntervalId !== null
-        ? "Pause"
-        : "Resume";
+    if (!draftPhaseStarted) {
+      btn.textContent = "Start";
+    } else if (draftIntervalId !== null) {
+      btn.textContent = "Pause";
+    } else {
+      btn.textContent = "Resume";
+    }
     btn.disabled = draftSecondsRemaining <= 0;
   }
 
@@ -422,6 +526,7 @@
       renderDraftTimerDigits();
       stopDraftTimer();
       renderDraftTimerButton();
+      playBellSound();
       return;
     }
     renderDraftTimerDigits();
@@ -475,6 +580,7 @@
     state.draftMode = mode;
     state.screen = "draft";
     state.draft = { pack: 1, pick: 1, phase: "pick" };
+    state.tournamentDate = formatDateEU(new Date());
     draftPhaseChanged = true;
     saveState();
     renderAll();
@@ -557,6 +663,7 @@
 
     saveState();
     animatePodiumNextRender = true;
+    resetRoundTimer();
     renderAll();
   }
 
@@ -567,6 +674,7 @@
       "End the tournament now? Standings will be final and no more rounds can be generated.",
       () => {
         state.ended = true;
+        stopRoundTimer();
         saveState();
         animatePodiumNextRender = true;
         renderAll();
@@ -648,6 +756,7 @@
         localStorage.removeItem(STORAGE_KEY);
         state = emptyState();
         draftPhaseChanged = true;
+        resetRoundTimer();
         renderAll();
       },
     );
@@ -673,6 +782,9 @@
   document
     .getElementById("draft-timer-btn")
     .addEventListener("click", onDraftTimerBtnClick);
+  document
+    .getElementById("round-timer-btn")
+    .addEventListener("click", onRoundTimerBtnClick);
   document
     .getElementById("draft-skip-btn")
     .addEventListener("click", onSkipDraftClick);
