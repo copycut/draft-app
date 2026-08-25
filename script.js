@@ -24,6 +24,16 @@
   let roundSecondsRemaining = ROUND_SECONDS;
   let roundStarted = false;
   let audioCtx = null;
+  let pendingDeckColors = [];
+  const DECK_COLORS = ["W", "U", "B", "R", "G"];
+  const DECK_COLOR_ICON = {
+    W: "assets/white.svg",
+    U: "assets/blue.svg",
+    B: "assets/black.svg",
+    R: "assets/red.svg",
+    G: "assets/green.svg",
+  };
+  const DECK_COLORLESS_ICON = "assets/gray.svg";
 
   function playBellSound() {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -281,7 +291,20 @@
   }
 
   function deleteButtonHtml(player) {
-    return `<button type="button" class="btn btn-danger btn-delete" data-action="delete" data-player="${player.id}" aria-label="Remove ${escapeHtml(player.name)}">Delete</button>`;
+    return `<button type="button" class="btn btn-outline btn-danger btn-delete" data-action="delete" data-player="${player.id}" aria-label="Remove ${escapeHtml(player.name)}">Delete</button>`;
+  }
+
+  function deckCellHtml(player) {
+    const colors = player.colors || [];
+    const icons = colors.length
+      ? DECK_COLORS.filter((c) => colors.includes(c)).map(
+          (c) =>
+            `<img class="deck-color-icon" src="${DECK_COLOR_ICON[c]}" width="16" height="16" alt="" />`,
+        )
+      : [
+          `<img class="deck-color-icon" src="${DECK_COLORLESS_ICON}" width="16" height="16" alt="" />`,
+        ];
+    return `<div class="deck-cell">${icons.join("")}<span>${escapeHtml(player.deck)}</span></div>`;
   }
 
   function renderPlayersTable() {
@@ -297,7 +320,7 @@
       tr.innerHTML = `
         <td>#${index + 1}</td>
         <td>${escapeHtml(player.name)}</td>
-        <td>${escapeHtml(player.deck)}</td>
+        <td>${deckCellHtml(player)}</td>
         <td>${stats.wins}</td>
         <td>${stats.draws}</td>
         <td>${stats.losses}</td>
@@ -629,13 +652,39 @@
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name,
       deck,
+      colors: [...pendingDeckColors],
     });
 
     nameInput.value = "";
     deckInput.value = "";
+    resetDeckColorToggles();
 
     saveState();
     renderAll();
+  }
+
+  function resetDeckColorToggles() {
+    pendingDeckColors = [];
+    document
+      .querySelectorAll("#deck-color-toggles .color-toggle-btn")
+      .forEach((btn) => {
+        btn.classList.remove("active");
+        btn.setAttribute("aria-pressed", "false");
+      });
+  }
+
+  function onDeckColorToggleClick(e) {
+    const btn = e.currentTarget;
+    const color = btn.dataset.color;
+    const index = pendingDeckColors.indexOf(color);
+    if (index === -1) {
+      pendingDeckColors.push(color);
+    } else {
+      pendingDeckColors.splice(index, 1);
+    }
+    const active = pendingDeckColors.includes(color);
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", String(active));
   }
 
   function onGenerateRoundClick() {
@@ -767,6 +816,9 @@
   document
     .getElementById("add-player-form")
     .addEventListener("submit", onAddPlayerSubmit);
+  document
+    .querySelectorAll("#deck-color-toggles .color-toggle-btn")
+    .forEach((btn) => btn.addEventListener("click", onDeckColorToggleClick));
   document
     .getElementById("generate-round-btn")
     .addEventListener("click", onGenerateRoundClick);

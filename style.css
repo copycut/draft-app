@@ -330,7 +330,15 @@ section {
 
 /* Standings / podium */
 
+.tournament-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .tournament-date {
+  display: inline-block;
   text-transform: none;
   font-size: 0.8rem;
   font-weight: 400;
@@ -579,14 +587,57 @@ section {
   color: var(--color-text);
 }
 
+.color-toggle-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.color-toggle-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.45;
+}
+
+.color-toggle-btn img {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.color-toggle-btn.active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.deck-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.deck-color-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
 
 .btn-delete {
-  min-height: 40px;
-  padding: 0.5rem 0.9rem;
-  font-size: 0.85rem;
+  min-height: 0;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.7rem;
 }
 
 table {

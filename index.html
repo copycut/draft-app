@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MTG Draft Night</title>
-    <link rel="stylesheet" href="style.css?v=1.1" />
+    <link rel="stylesheet" href="style.css?v=1.2" />
   </head>
   <body>
     <section id="player-count-screen">
@@ -59,7 +59,10 @@
 
     <div id="tournament-screen">
       <section class="standings" id="standings-section">
-        <h2>Top 3 <span id="tournament-date" class="tournament-date"></span></h2>
+        <h2 class="tournament-title">
+          <span>Top 3</span>
+          <span id="tournament-date" class="tournament-date"></span>
+        </h2>
         <div class="podium" id="podium"></div>
       </section>
 
@@ -114,6 +117,53 @@
             aria-label="Deck name"
             required
           />
+          <div id="deck-color-toggles" class="color-toggle-group">
+            <button
+              type="button"
+              class="color-toggle-btn"
+              data-color="W"
+              aria-label="White"
+              aria-pressed="false"
+            >
+              <img src="assets/white.svg" width="24" height="24" alt="W" />
+            </button>
+            <button
+              type="button"
+              class="color-toggle-btn"
+              data-color="U"
+              aria-label="Blue"
+              aria-pressed="false"
+            >
+              <img src="assets/blue.svg" width="24" height="24" alt="U" />
+            </button>
+            <button
+              type="button"
+              class="color-toggle-btn"
+              data-color="B"
+              aria-label="Black"
+              aria-pressed="false"
+            >
+              <img src="assets/black.svg" width="24" height="24" alt="B" />
+            </button>
+            <button
+              type="button"
+              class="color-toggle-btn"
+              data-color="R"
+              aria-label="Red"
+              aria-pressed="false"
+            >
+              <img src="assets/red.svg" width="24" height="24" alt="R" />
+            </button>
+            <button
+              type="button"
+              class="color-toggle-btn"
+              data-color="G"
+              aria-label="Green"
+              aria-pressed="false"
+            >
+              <img src="assets/green.svg" width="24" height="24" alt="G" />
+            </button>
+          </div>
           <button type="submit" class="btn btn-accent">Add player</button>
         </form>
 
@@ -153,6 +203,6 @@
       </div>
     </div>
 
-    <script src="script.js?v=1.1"></script>
+    <script src="script.js?v=1.2"></script>
   </body>
 </html>
