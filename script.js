@@ -103,7 +103,12 @@
         screen: ["select", "draft", "tournament"].includes(parsed.screen)
           ? parsed.screen
           : "select",
-        draftMode: parsed.draftMode === 4 ? 4 : 8,
+        draftMode:
+          Number.isInteger(parsed.draftMode) &&
+          parsed.draftMode >= 2 &&
+          parsed.draftMode <= 12
+            ? parsed.draftMode
+            : 8,
         draft: normalizeDraft(parsed.draft),
         tournamentDate:
           typeof parsed.tournamentDate === "string"
@@ -115,12 +120,12 @@
     }
   }
 
-  function picksPerPack(mode) {
-    return mode === 4 ? 7 : 14;
+  function cardsPerPick(mode) {
+    return mode <= 6 ? 2 : 1;
   }
 
-  function cardsPerPick(mode) {
-    return mode === 4 ? 2 : 1;
+  function picksPerPack(mode) {
+    return Math.floor(14 / cardsPerPick(mode));
   }
 
   function saveState() {
@@ -247,11 +252,15 @@
       const p2 = playerById(entry.player2Id);
       const li = document.createElement("li");
       li.className = "match-entry";
+      const pairingHtml =
+        entry.player2Id == null
+          ? byeResultHtml(p1)
+          : entry.round === activeRound
+            ? matchPairingButtonsHtml(entry, p1, p2)
+            : matchPairingResultHtml(entry, p1, p2);
       li.innerHTML = `
         <span class="match-round">Round ${entry.round}</span>
-        <span class="match-pairing">
-          ${entry.round === activeRound ? matchPairingButtonsHtml(entry, p1, p2) : matchPairingResultHtml(entry, p1, p2)}
-        </span>
+        <span class="match-pairing">${pairingHtml}</span>
       `;
       log.appendChild(li);
     });
@@ -259,6 +268,11 @@
     log.querySelectorAll("button[data-match]").forEach((btn) => {
       btn.addEventListener("click", onMatchResultClick);
     });
+  }
+
+  function byeResultHtml(player) {
+    const name = player ? escapeHtml(player.name) : "?";
+    return `<span class="match-result match-bye">${name} — Bye</span>`;
   }
 
   function matchPairingButtonsHtml(entry, p1, p2) {
@@ -609,6 +623,31 @@
     renderAll();
   }
 
+  function onOpenCustomCountModalClick() {
+    const input = document.getElementById("custom-count-input");
+    input.value = "";
+    document.getElementById("custom-count-confirm").disabled = true;
+    document.getElementById("custom-count-modal").classList.remove("hidden");
+    input.focus();
+  }
+
+  function onCustomCountInputChange() {
+    const value = Number(document.getElementById("custom-count-input").value);
+    const valid = Number.isInteger(value) && value >= 2 && value <= 12;
+    document.getElementById("custom-count-confirm").disabled = !valid;
+  }
+
+  function onCustomCountCancelClick() {
+    document.getElementById("custom-count-modal").classList.add("hidden");
+  }
+
+  function onCustomCountConfirmClick() {
+    const value = Number(document.getElementById("custom-count-input").value);
+    if (!Number.isInteger(value) || value < 2 || value > 12) return;
+    document.getElementById("custom-count-modal").classList.add("hidden");
+    onSelectPlayerCountClick(value);
+  }
+
   // ---- Event handlers ----
 
   function onMatchResultClick(e) {
@@ -693,7 +732,7 @@
     if (count !== state.draftMode) return;
     if (!latestRoundComplete()) return;
 
-    const pairs =
+    const { pairs, bye } =
       state.currentRound === 1
         ? generateRandomPairs(state.players)
         : generateStandingsPairs(state.players, state.matchLog);
@@ -708,6 +747,15 @@
         result: null,
       });
     });
+    if (bye) {
+      state.matchLog.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        round,
+        player1Id: bye.id,
+        player2Id: null,
+        result: bye.id,
+      });
+    }
     state.currentRound += 1;
 
     saveState();
@@ -731,13 +779,24 @@
     );
   }
 
+  function hasHadBye(playerId, matchLog) {
+    return matchLog.some(
+      (m) => m.player1Id === playerId && m.player2Id == null,
+    );
+  }
+
   function generateRandomPairs(players) {
-    const shuffled = [...players];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    const pool = [...players];
+    let bye = null;
+    if (pool.length % 2 === 1) {
+      const index = Math.floor(Math.random() * pool.length);
+      bye = pool.splice(index, 1)[0];
     }
-    return chunkIntoPairs(shuffled);
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return { pairs: chunkIntoPairs(pool), bye };
   }
 
   function generateStandingsPairs(players, matchLog) {
@@ -745,7 +804,15 @@
       matchLog.map((m) => pairKey(m.player1Id, m.player2Id)),
     );
     const sorted = [...players].sort(compareByStanding);
-    const unpaired = [...sorted];
+
+    let bye = null;
+    if (sorted.length % 2 === 1) {
+      const withoutBye = sorted.filter((p) => !hasHadBye(p.id, matchLog));
+      const byeCandidates = withoutBye.length > 0 ? withoutBye : sorted;
+      bye = byeCandidates[byeCandidates.length - 1];
+    }
+
+    const unpaired = sorted.filter((p) => p !== bye);
     const pairs = [];
 
     while (unpaired.length > 0) {
@@ -756,7 +823,7 @@
       pairs.push([p1, p2]);
     }
 
-    return pairs;
+    return { pairs, bye };
   }
 
   function pairKey(id1, id2) {
@@ -846,6 +913,18 @@
   document
     .getElementById("player-count-8-btn")
     .addEventListener("click", () => onSelectPlayerCountClick(8));
+  document
+    .getElementById("player-count-custom-btn")
+    .addEventListener("click", onOpenCustomCountModalClick);
+  document
+    .getElementById("custom-count-input")
+    .addEventListener("input", onCustomCountInputChange);
+  document
+    .getElementById("custom-count-cancel")
+    .addEventListener("click", onCustomCountCancelClick);
+  document
+    .getElementById("custom-count-confirm")
+    .addEventListener("click", onCustomCountConfirmClick);
 
   renderAll();
 })();

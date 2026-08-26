@@ -68,40 +68,47 @@ the UI from localStorage if present; otherwise start empty.
 
 ### 1. Player count selection
 
-The very first screen, before the draft timer or any tournament UI: exactly
-two buttons, "4 Players" and "8 Players". Nothing else on this screen — no
-skip option, no back button (use "Clear data" to restart if the wrong count
-gets picked, same as any other one-way choice in this app).
+The very first screen, before the draft timer or any tournament UI: three
+buttons — "4 Players", "8 Players", and "Custom". Nothing else on this
+screen — no skip option, no back button (use "Clear data" to restart if the
+wrong count gets picked, same as any other one-way choice in this app).
 
-- The choice is stored as `state.draftMode` (4 or 8) and persisted.
+- The choice is stored as `state.draftMode` (any integer 2–12) and
+  persisted. "4 Players" and "8 Players" set it directly; "Custom" opens a
+  modal with a number input (bounds 2–12) and Confirm/Cancel — Confirm is
+  disabled until the input holds a valid integer in that range.
 - It sets how many cards each player takes per pick during the draft (see
   Draft phase below), which in turn determines how many picks a 15-card pack
-  yields: 4 players take 2 cards per pick → 7 picks per pack (1 card left
-  over, undrafted); 8 players take 1 card per pick → 14 picks per pack (also
-  1 card left over — the pack's very last card is never drafted, by design).
+  yields: pods of 6 players or fewer take 2 cards per pick → 7 picks per
+  pack; pods of 7 or more take 1 card per pick → 14 picks per pack. Either
+  way, 1 card is always left over, undrafted — the pack's very last card is
+  never drafted, by design.
 - It also becomes the required roster size for the tournament: "Generate
   next round pairings" (see Swiss pairing below) now requires exactly
-  `draftMode` players, not a generic "4 or 8" — the draft and the tournament
-  always agree on how many people are at the table.
-- Tapping either button sets `state.screen = "draft"` and resets
-  `state.draft` to `{ pack: 1, pick: 1, phase: "pick" }`, moving straight
-  into the draft phase.
+  `draftMode` players — the draft and the tournament always agree on how
+  many people are at the table. An odd `draftMode` (e.g. 7) is valid; one
+  player sits out each round as a bye (see Swiss pairing below).
+- Tapping "4 Players"/"8 Players", or confirming the Custom modal, sets
+  `state.screen = "draft"` and resets `state.draft` to
+  `{ pack: 1, pick: 1, phase: "pick" }`, moving straight into the draft
+  phase.
 
 ### 2. Draft phase (pick timer)
 
 Once a player count is chosen, the app shows a full-screen pick timer
 covering the physical card draft: 3 packs of 15 cards each, split into
-picksPerPack(draftMode) picks per pack (7 for 4 players, 14 for 8 — see
-Player count selection above). The rest of the app (standings, pairing
-controls, match log, players, footer) stays hidden behind this screen until
-the organizer finishes or skips it.
+picksPerPack(draftMode) picks per pack (7 for pods of 6 or fewer, 14 for
+pods of 7 or more — see Player count selection above). The rest of the app
+(standings, pairing controls, match log, players, footer) stays hidden
+behind this screen until the organizer finishes or skips it.
 
 - Per-pick countdown, keyed by how many cards are left in the pack before
   that pick (same table regardless of player count): 60s at 15 cards, 50s at
   14-13, 40s at 12-9, 35s at 8-7, 30s at 6, 25s at 5, 20s at 4, 15s at 3, 10s
-  at 2-1. In 8-player mode (1 card per pick) this plays out over all 14
-  picks in order; in 4-player mode (2 cards per pick) each pick jumps two
-  cards down the same table, so the countdown drops faster pick-to-pick.
+  at 2-1. In pods of 7 or more (1 card per pick) this plays out over all 14
+  picks in order; in pods of 6 or fewer (2 cards per pick) each pick jumps
+  two cards down the same table, so the countdown drops faster
+  pick-to-pick.
 - Between packs, a review period with its own countdown: 30s after Pack 1,
   45s after Pack 2, 60s after Pack 3 — unaffected by player count.
 - The countdown does **not** start automatically for a new pick or review
@@ -205,8 +212,8 @@ A "Generate next round pairings" button that proposes matchups for the next
 round. Disabled unless:
 
 - the roster has exactly `state.draftMode` players (see Player count
-  selection and Player management above — always even, so the app never has
-  to handle an odd player count or byes), **and**
+  selection and Player management above — may be odd, see Byes below),
+  **and**
 - every match in the most recently generated round has a recorded result
   (win or draw) — pairing round N+1 by standing requires round N's points to
   actually be final, so the button (and its hint text) blocks until then.
@@ -228,6 +235,17 @@ Pairing logic:
     to allowing a repeat rather than blocking pairing generation.
 - On generation, append the new round's pairings to `matchLog` and increment
   `currentRound`.
+
+**Byes**: when the roster is an odd size, one player sits out each round.
+A bye is recorded as a `matchLog` entry with no opponent
+(`player2Id: null`) and a result pre-set to that player's own id — an
+automatic win (3 points), never a pending/editable match. Round 1 picks the
+bye recipient at random; round 2+ gives it to the current lowest-standing
+player who hasn't had a bye yet this tournament (falling back to the
+lowest-standing player overall, repeats allowed, once everyone has had
+one) — matching the same "allow a repeat rather than block" philosophy as
+rematch avoidance above. The match log shows a bye as a single locked
+"<Player> — Bye" row instead of win/draw buttons.
 
 ### 8. End tournament
 

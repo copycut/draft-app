@@ -26,7 +26,6 @@
 .hidden {
   display: none !important;
 }
-
 body {
   display: flex;
   flex-direction: column;
@@ -63,7 +62,7 @@ body::after {
 body::before {
   background: radial-gradient(
     circle,
-    rgba(71, 252, 225, 0.31),
+    rgba(71, 252, 225, 0.546),
     transparent 70%
   );
   animation: orbit-1 40s linear infinite;
@@ -72,7 +71,7 @@ body::before {
 body::after {
   background: radial-gradient(
     circle,
-    rgba(163, 84, 219, 0.431),
+    rgba(163, 84, 219, 0.58),
     transparent 70%
   );
   animation: orbit-2 55s linear infinite;
@@ -179,6 +178,12 @@ section {
   box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.1);
 }
 
+.draft-screen,
+.player-count-screen {
+  background: none;
+  border: none;
+}
+
 .players-section {
   margin-bottom: 0;
 }
@@ -263,8 +268,19 @@ section {
 }
 
 .player-count-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   font-size: 2rem;
   padding: 2rem 3rem;
+}
+
+.player-count-hint {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 400;
+  padding-top: 0.25rem;
 }
 
 .draft-progress {
@@ -476,7 +492,6 @@ section {
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
-  border: 3px solid var(--color-border);
   border-radius: 12px;
   padding: 1rem;
   transition: border-color 0.2s ease;
@@ -547,6 +562,11 @@ section {
 .match-result {
   color: var(--color-text-dim);
   font-size: 0.9rem;
+}
+
+.match-bye {
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 .match-btn {
@@ -704,6 +724,18 @@ table td:first-child {
   gap: 0.75rem;
   justify-content: center;
   margin-top: 1rem;
+}
+
+.modal-box input[type="number"] {
+  width: 100%;
+  margin-top: 0.75rem;
+  font-size: 1.5rem;
+  text-align: center;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius);
+  border: 3px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
 }
 
 /* Footer */
